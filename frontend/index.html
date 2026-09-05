@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>LeaseLens</title>
+
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+    <main class="container">
+
+        <div class="brand">
+            <div class="logo">L</div>
+
+            <div>
+                <h1>LeaseLens</h1>
+                <p>AI-Powered Lease Agreement Review</p>
+            </div>
+        </div>
+
+        <section class="hero">
+
+            <div class="hero-text">
+
+                <span class="tag">
+                    NexusTiQ24 · PS05
+                </span>
+
+                <h2>
+                    Review leases with
+                    <span>evidence,</span>
+                    not guesswork.
+                </h2>
+
+                <p>
+                    Upload a lease agreement and identify important
+                    clauses, risks, and deviations from company standards.
+                </p>
+
+            </div>
+
+
+            <div class="upload-card">
+
+                <div class="upload-icon">
+                    ↑
+                </div>
+
+                <h3>
+                    Upload Lease Agreement
+                </h3>
+
+                <p>
+                    Select a PDF or DOCX lease document.
+                </p>
+
+                <label class="upload-button">
+
+                    Choose Document
+
+                    <input
+                        type="file"
+                        id="fileInput"
+                        accept=".pdf,.docx"
+                    >
+
+                </label>
+
+                <p id="fileName" class="file-name">
+                    No document selected
+                </p>
+
+                <button
+                    id="analyzeButton"
+                    class="analyze-button"
+                    disabled
+                >
+                    Analyze Agreement
+                </button>
+
+                <p id="message" class="message"></p>
+
+            </div>
+
+        </section>
+
+
+        <section class="features">
+
+            <div class="feature">
+
+                <strong>✓ Evidence-backed</strong>
+
+                <p>
+                    Findings will reference the relevant
+                    lease clause.
+                </p>
+
+            </div>
+
+
+            <div class="feature">
+
+                <strong>⚠ Human review</strong>
+
+                <p>
+                    AI recommendations never replace
+                    human approval.
+                </p>
+
+            </div>
+
+
+            <div class="feature">
+
+                <strong>🔒 Grounded analysis</strong>
+
+                <p>
+                    Analysis is based on the lease and
+                    defined standards.
+                </p>
+
+            </div>
+
+        </section>
+
+
+        <footer>
+            LeaseLens · NexusTiQ24 · Phase 1
+        </footer>
+
+    </main>
+
+
+    <script src="/static/app.js"></script>
+
+</body>
+
+</html>
