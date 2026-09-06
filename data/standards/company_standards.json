@@ -1,23 +1,34 @@
 {
     "rent": {
-        "max_monthly_amount": 50000,
-        "currency": "INR"
+        "currency": "INR",
+        "allow_unilateral_modification": false
     },
 
     "security_deposit": {
-        "max_amount": 100000,
-        "currency": "INR"
+        "currency": "INR",
+        "min_amount": 30000,
+        "max_amount": 50000,
+        "require_return_timeline": true,
+        "allow_forfeiture": false
     },
 
     "termination": {
-        "minimum_notice_days": 30
+        "minimum_notice_days": 30,
+        "maximum_notice_days": 60
     },
 
     "maintenance": {
+        "required": true,
         "tenant_responsible_for_major_repairs": false
     },
 
-    "governing_law": {
+    "notice": {
         "required": true
+    },
+
+    "prohibited_conditions": {
+        "unrestricted_landlord_entry": true,
+        "deposit_forfeiture": true,
+        "unilateral_rent_modification": true
     }
 }

@@ -9,7 +9,8 @@ Supported checks:
 - SECURITY_DEPOSIT
 - TERMINATION
 - MAINTENANCE
-- GOVERNING_LAW
+- NOTICE
+- PROHIBITED_CONDITIONS
 """
 
 import re
@@ -20,7 +21,7 @@ def extract_amount(text: str):
     """
     Extract the first monetary amount from clause text.
 
-    Supports formats such as:
+    Supports:
         INR 50,000
         Rs. 50,000
         ₹50,000
@@ -53,7 +54,7 @@ def extract_notice_days(text: str):
 
     Example:
         30 days notice
-        thirty days notice
+        60 days notice
     """
 
     pattern = r"(\d+)\s*(?:day|days)"
@@ -70,46 +71,61 @@ def extract_notice_days(text: str):
     return None
 
 
-def check_rent(clause: Dict, standard: Dict) -> Dict:
+def check_rent(
+    clause: Dict,
+    standard: Dict
+) -> Dict:
     """
-    Check whether monthly rent is within
-    the company standard.
+    Check rent clause against company standards.
+
+    Current standard checks:
+    - Currency
+    - Unilateral rent modification
     """
 
-    amount = extract_amount(clause["text"])
+    text = clause["text"].lower()
 
-    maximum = standard.get(
-        "max_monthly_amount"
+    if not text.strip():
+        return {
+            "status": "REVIEW",
+            "reason": (
+                "The rent clause is empty "
+                "or contains no usable text."
+            )
+        }
+
+    # Check unilateral modification
+    allow_unilateral = standard.get(
+        "allow_unilateral_modification"
     )
 
-    if amount is None:
-        return {
-            "status": "REVIEW",
-            "reason": "Could not determine the monthly rent."
-        }
+    unilateral_detected = (
+        "unilaterally" in text
+        or "unilateral" in text
+        or "landlord may modify rent" in text
+        or "landlord may increase rent" in text
+        or "landlord can modify rent" in text
+        or "landlord can increase rent" in text
+    )
 
-    if maximum is None:
+    if (
+        allow_unilateral is False
+        and unilateral_detected
+    ):
         return {
-            "status": "REVIEW",
-            "reason": "No maximum rent standard is defined."
-        }
-
-    if amount <= maximum:
-        return {
-            "status": "COMPLIANT",
+            "status": "NON_COMPLIANT",
             "reason": (
-                f"Monthly rent of INR {amount:,} "
-                f"is within the maximum allowed "
-                f"amount of INR {maximum:,}."
+                "The lease allows unilateral "
+                "rent modification, which is "
+                "not permitted by the company standard."
             )
         }
 
     return {
-        "status": "NON_COMPLIANT",
+        "status": "COMPLIANT",
         "reason": (
-            f"Monthly rent of INR {amount:,} "
-            f"exceeds the maximum allowed "
-            f"amount of INR {maximum:,}."
+            "Rent clause complies with the "
+            "current company standard."
         )
     }
 
@@ -119,14 +135,35 @@ def check_security_deposit(
     standard: Dict
 ) -> Dict:
     """
-    Check whether the security deposit
-    is within the company standard.
+    Check security deposit against company standards.
+
+    Checks:
+    - Minimum amount
+    - Maximum amount
+    - Return timeline requirement
+    - Forfeiture restriction
     """
 
-    amount = extract_amount(clause["text"])
+    text = clause["text"].lower()
+
+    amount = extract_amount(
+        clause["text"]
+    )
+
+    minimum = standard.get(
+        "min_amount"
+    )
 
     maximum = standard.get(
         "max_amount"
+    )
+
+    require_return = standard.get(
+        "require_return_timeline"
+    )
+
+    allow_forfeiture = standard.get(
+        "allow_forfeiture"
     )
 
     if amount is None:
@@ -138,31 +175,70 @@ def check_security_deposit(
             )
         }
 
-    if maximum is None:
+    if (
+        minimum is not None
+        and amount < minimum
+    ):
         return {
-            "status": "REVIEW",
+            "status": "NON_COMPLIANT",
             "reason": (
-                "No maximum security deposit "
-                "standard is defined."
+                f"Security deposit of INR {amount:,} "
+                f"is below the minimum required "
+                f"amount of INR {minimum:,}."
             )
         }
 
-    if amount <= maximum:
+    if (
+        maximum is not None
+        and amount > maximum
+    ):
         return {
-            "status": "COMPLIANT",
+            "status": "NON_COMPLIANT",
             "reason": (
                 f"Security deposit of INR {amount:,} "
-                f"is within the maximum allowed "
+                f"exceeds the maximum allowed "
                 f"amount of INR {maximum:,}."
             )
         }
 
+    if (
+        require_return is True
+        and "return" not in text
+    ):
+        return {
+            "status": "REVIEW",
+            "reason": (
+                "A security deposit return "
+                "timeline is required but could "
+                "not be identified."
+            )
+        }
+
+    forfeiture_detected = (
+        "forfeit" in text
+        or "forfeiture" in text
+        or "deposit will not be returned" in text
+        or "deposit shall not be returned" in text
+    )
+
+    if (
+        allow_forfeiture is False
+        and forfeiture_detected
+    ):
+        return {
+            "status": "NON_COMPLIANT",
+            "reason": (
+                "The lease contains a security "
+                "deposit forfeiture condition, "
+                "which is not permitted."
+            )
+        }
+
     return {
-        "status": "NON_COMPLIANT",
+        "status": "COMPLIANT",
         "reason": (
             f"Security deposit of INR {amount:,} "
-            f"exceeds the maximum allowed "
-            f"amount of INR {maximum:,}."
+            "complies with the company standard."
         )
     }
 
@@ -172,16 +248,23 @@ def check_termination(
     standard: Dict
 ) -> Dict:
     """
-    Check whether the termination notice
-    satisfies the minimum notice requirement.
+    Check termination notice period.
+
+    Current standard:
+    - Minimum: 30 days
+    - Maximum: 60 days
     """
 
     notice_days = extract_notice_days(
         clause["text"]
     )
 
-    minimum_days = standard.get(
+    minimum = standard.get(
         "minimum_notice_days"
+    )
+
+    maximum = standard.get(
+        "maximum_notice_days"
     )
 
     if notice_days is None:
@@ -193,31 +276,37 @@ def check_termination(
             )
         }
 
-    if minimum_days is None:
+    if (
+        minimum is not None
+        and notice_days < minimum
+    ):
         return {
-            "status": "REVIEW",
+            "status": "NON_COMPLIANT",
             "reason": (
-                "No minimum termination "
-                "notice standard is defined."
+                f"Notice period of {notice_days} days "
+                f"is below the minimum requirement "
+                f"of {minimum} days."
             )
         }
 
-    if notice_days >= minimum_days:
+    if (
+        maximum is not None
+        and notice_days > maximum
+    ):
         return {
-            "status": "COMPLIANT",
+            "status": "NON_COMPLIANT",
             "reason": (
                 f"Notice period of {notice_days} days "
-                f"meets the minimum requirement "
-                f"of {minimum_days} days."
+                f"exceeds the maximum allowed "
+                f"period of {maximum} days."
             )
         }
 
     return {
-        "status": "NON_COMPLIANT",
+        "status": "COMPLIANT",
         "reason": (
             f"Notice period of {notice_days} days "
-            f"is below the minimum requirement "
-            f"of {minimum_days} days."
+            "is within the permitted range."
         )
     }
 
@@ -230,33 +319,56 @@ def check_maintenance(
     Check maintenance responsibility.
     """
 
+    required = standard.get(
+        "required"
+    )
+
     tenant_major_repairs = standard.get(
         "tenant_responsible_for_major_repairs"
     )
 
     text = clause["text"].lower()
 
-    if tenant_major_repairs is None:
+    if required is True and not text.strip():
         return {
-            "status": "REVIEW",
+            "status": "NON_COMPLIANT",
             "reason": (
-                "No major-repair responsibility "
-                "standard is defined."
+                "Maintenance responsibility is "
+                "required but the clause is empty."
             )
         }
 
-    # Detect common wording indicating
-    # that the tenant is responsible.
     tenant_responsible = (
         "tenant shall be responsible" in text
         or "tenant is responsible" in text
         or "tenant responsible" in text
     )
 
-    if tenant_responsible:
-        actual_responsibility = True
-    else:
-        actual_responsibility = False
+    landlord_responsible = (
+        "landlord shall be responsible" in text
+        or "landlord is responsible" in text
+        or "landlord responsible" in text
+    )
+
+    if tenant_responsible and landlord_responsible:
+        return {
+            "status": "REVIEW",
+            "reason": (
+                "The clause contains conflicting "
+                "maintenance responsibilities."
+            )
+        }
+
+    if not tenant_responsible and not landlord_responsible:
+        return {
+            "status": "REVIEW",
+            "reason": (
+                "Could not determine who is responsible "
+                "for major repairs."
+            )
+        }
+
+    actual_responsibility = tenant_responsible
 
     if actual_responsibility == tenant_major_repairs:
         return {
@@ -276,13 +388,12 @@ def check_maintenance(
     }
 
 
-def check_governing_law(
+def check_notice(
     clause: Dict,
     standard: Dict
 ) -> Dict:
     """
-    Check whether governing law information
-    is present.
+    Check whether a required notice clause exists.
     """
 
     required = standard.get(
@@ -296,7 +407,7 @@ def check_governing_law(
         return {
             "status": "COMPLIANT",
             "reason": (
-                "Governing law is not required "
+                "Notice clause is not required "
                 "by the company standard."
             )
         }
@@ -305,7 +416,7 @@ def check_governing_law(
         return {
             "status": "COMPLIANT",
             "reason": (
-                "Governing law information "
+                "Required notice information "
                 "is present in the lease."
             )
         }
@@ -313,8 +424,91 @@ def check_governing_law(
     return {
         "status": "NON_COMPLIANT",
         "reason": (
-            "Governing law information "
-            "is required but missing."
+            "A notice clause is required "
+            "but is missing."
+        )
+    }
+
+
+def check_prohibited_conditions(
+    clause: Dict,
+    standard: Dict
+) -> Dict:
+    """
+    Detect prohibited conditions in a lease clause.
+
+    Supported conditions:
+    - Unrestricted landlord entry
+    - Deposit forfeiture
+    - Unilateral rent modification
+    """
+
+    text = clause["text"].lower()
+
+    violations = []
+
+    if standard.get(
+        "unrestricted_landlord_entry"
+    ):
+        unrestricted_entry = (
+            "landlord may enter at any time" in text
+            or "landlord can enter at any time" in text
+            or "landlord may enter without notice" in text
+            or "landlord can enter without notice" in text
+            or "unrestricted entry" in text
+        )
+
+        if unrestricted_entry:
+            violations.append(
+                "unrestricted landlord entry"
+            )
+
+    if standard.get(
+        "deposit_forfeiture"
+    ):
+        forfeiture = (
+            "deposit forfeited" in text
+            or "deposit forfeiture" in text
+            or "deposit will be forfeited" in text
+            or "deposit shall be forfeited" in text
+        )
+
+        if forfeiture:
+            violations.append(
+                "deposit forfeiture"
+            )
+
+    if standard.get(
+        "unilateral_rent_modification"
+    ):
+        unilateral_rent = (
+            "landlord may modify rent" in text
+            or "landlord may increase rent" in text
+            or "landlord can modify rent" in text
+            or "landlord can increase rent" in text
+            or "unilateral rent modification" in text
+        )
+
+        if unilateral_rent:
+            violations.append(
+                "unilateral rent modification"
+            )
+
+    if violations:
+        return {
+            "status": "NON_COMPLIANT",
+            "reason": (
+                "Prohibited condition detected: "
+                + ", ".join(violations)
+                + "."
+            )
+        }
+
+    return {
+        "status": "COMPLIANT",
+        "reason": (
+            "No prohibited conditions were "
+            "detected in the clause."
         )
     }
 
@@ -324,16 +518,27 @@ def check_clause(
     standards: Dict
 ) -> Dict:
     """
-    Check one clause against the appropriate
-    company standard.
+    Check one clause against the
+    appropriate company standard.
     """
 
     clause_type = clause["clause_type"]
 
-    standard = standards.get(
-        clause_type.lower(),
-        {}
-    )
+    standard_key = clause_type.lower()
+
+    if standard_key not in standards:
+        return {
+            "clause_id": clause["clause_id"],
+            "clause_type": clause_type,
+            "section_title": clause["section_title"],
+            "status": "REVIEW",
+            "reason": (
+                f"No company standard is defined "
+                f"for clause type {clause_type}."
+            ),
+        }
+
+    standard = standards[standard_key]
 
     if clause_type == "RENT":
         result = check_rent(
@@ -359,8 +564,14 @@ def check_clause(
             standard
         )
 
-    elif clause_type == "GOVERNING_LAW":
-        result = check_governing_law(
+    elif clause_type == "NOTICE":
+        result = check_notice(
+            clause,
+            standard
+        )
+
+    elif clause_type == "PROHIBITED_CONDITIONS":
+        result = check_prohibited_conditions(
             clause,
             standard
         )
@@ -381,7 +592,6 @@ def check_clause(
         "status": result["status"],
         "reason": result["reason"],
     }
-
 
 def check_compliance(
     clauses: List[Dict],
