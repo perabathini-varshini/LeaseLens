@@ -1,0 +1,23 @@
+{
+    "rent": {
+        "max_monthly_amount": 50000,
+        "currency": "INR"
+    },
+
+    "security_deposit": {
+        "max_amount": 100000,
+        "currency": "INR"
+    },
+
+    "termination": {
+        "minimum_notice_days": 30
+    },
+
+    "maintenance": {
+        "tenant_responsible_for_major_repairs": false
+    },
+
+    "governing_law": {
+        "required": true
+    }
+}
