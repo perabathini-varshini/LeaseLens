@@ -1,8 +1,10 @@
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+from api.routes import router
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -16,6 +18,17 @@ app = FastAPI(
 )
 
 
+# -----------------------------
+# API Routes
+# -----------------------------
+
+app.include_router(router)
+
+
+# -----------------------------
+# Frontend
+# -----------------------------
+
 app.mount(
     "/static",
     StaticFiles(directory=FRONTEND_DIR),
@@ -28,11 +41,3 @@ def home():
     return FileResponse(
         FRONTEND_DIR / "index.html"
     )
-
-
-@app.get("/api/health")
-def health():
-    return {
-        "status": "ok",
-        "service": "LeaseLens"
-    }

@@ -129,7 +129,35 @@ def test_review_when_rent_amount_missing():
         standards
     )
 
-    # Current rent rule does not require
-    # an amount, so this should currently
-    # remain compliant.
+    assert results[0]["status"] == "REVIEW"
+
+    assert (
+        "rent amount"
+        in results[0]["reason"].lower()
+    )
+
+
+def test_maintenance_major_structural_repairs_assigned_to_landlord():
+    standards = load_standards()
+
+    clauses = [
+        {
+            "clause_id": "CLAUSE-010",
+            "section_title": "REPAIRS AND MAINTENANCE",
+            "clause_type": "MAINTENANCE",
+            "text": (
+                "The Tenant shall keep the premises clean "
+                "and in good condition. The Landlord shall "
+                "be responsible for major structural repairs "
+                "unless damage was caused by the Tenant's "
+                "negligence or misuse."
+            )
+        }
+    ]
+
+    results = check_compliance(
+        clauses,
+        standards
+    )
+
     assert results[0]["status"] == "COMPLIANT"

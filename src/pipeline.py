@@ -1,24 +1,63 @@
+import json
+from pathlib import Path
+
 from src.document_parser import extract_document
 from src.text_cleaner import clean_text
 from src.section_detector import detect_sections
 from src.clause_extractor import extract_clauses
 from src.relationship_detector import detect_relationships
+
+from src.standard_mapper import map_clauses_to_standards
+from src.compliance_checker import check_compliance
+
 from src.structured_json import (
     create_structured_json,
     save_structured_json
 )
 
 
-def run_pipeline(input_path: str, output_path: str) -> dict:
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+STANDARDS_PATH = (
+    BASE_DIR
+    / "data"
+    / "standards"
+    / "company_standards.json"
+)
+
+
+def load_company_standards() -> dict:
+    """
+    Load company-defined compliance standards.
+    """
+
+    with open(
+        STANDARDS_PATH,
+        "r",
+        encoding="utf-8"
+    ) as file:
+
+        return json.load(file)
+
+
+def run_pipeline(
+    input_path: str,
+    output_path: str
+) -> dict:
+
     """
     Run the complete LeaseLens document intelligence pipeline.
 
     Flow:
+
         Document
         -> Clean Text
         -> Sections
         -> Clauses
         -> Relationships
+        -> Company Standards
+        -> Standard Mapping
+        -> Compliance Checking
         -> Structured JSON
     """
 
@@ -30,7 +69,7 @@ def run_pipeline(input_path: str, output_path: str) -> dict:
     # 1. Extract document
     # --------------------------------------------------
 
-    print("\n[1/5] Extracting document...")
+    print("\n[1/7] Extracting document...")
 
     documents = extract_document(input_path)
 
@@ -43,9 +82,10 @@ def run_pipeline(input_path: str, output_path: str) -> dict:
     # 2. Clean extracted text
     # --------------------------------------------------
 
-    print("\n[2/5] Cleaning text...")
+    print("\n[2/7] Cleaning text...")
 
     for document in documents:
+
         document["text"] = clean_text(
             document["text"]
         )
@@ -56,7 +96,7 @@ def run_pipeline(input_path: str, output_path: str) -> dict:
     # 3. Detect sections
     # --------------------------------------------------
 
-    print("\n[3/5] Detecting sections...")
+    print("\n[3/7] Detecting sections...")
 
     sections = detect_sections(documents)
 
@@ -69,7 +109,7 @@ def run_pipeline(input_path: str, output_path: str) -> dict:
     # 4. Extract clauses
     # --------------------------------------------------
 
-    print("\n[4/5] Extracting clauses...")
+    print("\n[4/7] Extracting clauses...")
 
     clauses = extract_clauses(sections)
 
@@ -82,7 +122,7 @@ def run_pipeline(input_path: str, output_path: str) -> dict:
     # 5. Detect relationships
     # --------------------------------------------------
 
-    print("\n[5/5] Detecting relationships...")
+    print("\n[5/7] Detecting relationships...")
 
     relationships = detect_relationships(
         clauses
@@ -94,10 +134,45 @@ def run_pipeline(input_path: str, output_path: str) -> dict:
     )
 
     # --------------------------------------------------
-    # Create structured JSON
+    # 6. Load standards + compliance
     # --------------------------------------------------
 
-    print("\nCreating structured JSON...")
+    print("\n[6/7] Checking company compliance...")
+
+    standards = load_company_standards()
+
+    # Map each clause to its company standard
+    standard_mappings = map_clauses_to_standards(
+        clauses,
+        standards
+    )
+
+    # Check each clause against the standard
+    compliance_results = check_compliance(
+        clauses,
+        standards
+    )
+
+    print(
+        f"       Standards loaded: "
+        f"{len(standards)}"
+    )
+
+    print(
+        f"       Standard mappings: "
+        f"{len(standard_mappings)}"
+    )
+
+    print(
+        f"       Compliance results: "
+        f"{len(compliance_results)}"
+    )
+
+    # --------------------------------------------------
+    # 7. Create structured JSON
+    # --------------------------------------------------
+
+    print("\n[7/7] Creating structured JSON...")
 
     structured_data = create_structured_json(
         documents,
@@ -105,6 +180,11 @@ def run_pipeline(input_path: str, output_path: str) -> dict:
         clauses,
         relationships
     )
+
+    # Add Phase 3 business intelligence
+    structured_data["standards"] = standards
+    structured_data["standard_mappings"] = standard_mappings
+    structured_data["compliance"] = compliance_results
 
     # --------------------------------------------------
     # Save structured JSON
