@@ -427,8 +427,14 @@ def check_maintenance(
     for major or structural repairs.
     """
 
-    original_text = clause.get("text", "")
-    text = original_text.lower()
+    original_text = clause.get(
+        "text",
+        ""
+    )
+
+    text = " ".join(
+        original_text.lower().split()
+    )
 
     required = standard.get(
         "required",
@@ -609,7 +615,6 @@ def check_maintenance(
             "repairs does not match the company standard."
         )
     }
-
 
 # ============================================================
 # NOTICE

@@ -1,6 +1,9 @@
 import json
 
-from src.compliance_checker import check_compliance
+from src.compliance_checker import (
+    check_compliance,
+    check_maintenance
+)
 
 
 STANDARD_PATH = (
@@ -161,3 +164,31 @@ def test_maintenance_major_structural_repairs_assigned_to_landlord():
     )
 
     assert results[0]["status"] == "COMPLIANT"
+
+
+def test_maintenance_landlord_responsible_for_structural_repairs():
+    clause = {
+        "clause_type": "MAINTENANCE",
+        "text": (
+            "The tenant is responsible for keeping the premises "
+            "clean and in good condition, while the landlord is "
+            "responsible for structural repairs."
+        )
+    }
+
+    standard = {
+        "required": True,
+        "tenant_responsible_for_major_repairs": False
+    }
+
+    result = check_maintenance(
+        clause,
+        standard
+    )
+
+    assert result["status"] == "COMPLIANT"
+
+    assert (
+        "matches the company standard"
+        in result["reason"]
+    )
