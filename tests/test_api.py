@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app import app
-
+from src import pipeline
 
 client = TestClient(app)
 
@@ -68,7 +68,6 @@ def test_empty_file():
     assert response.status_code == 400
     assert "empty" in response.json()["detail"].lower()
 
-
 def test_valid_pdf_analysis():
     pdf_path = LEASES_DIR / "sample_lease.pdf"
 
@@ -91,3 +90,35 @@ def test_valid_pdf_analysis():
     assert data["status"] == "success"
     assert data["result"]["summary"]["total_clauses"] > 0
     assert len(data["result"]["compliance"]) > 0
+
+def test_analysis_survives_gemini_initialization_failure(
+    monkeypatch,
+    tmp_path
+):
+        class FailingGeminiExplainer:
+            def __init__(self):
+                raise RuntimeError(
+                "Gemini unavailable for test"
+            )
+
+        monkeypatch.setattr(
+        pipeline,
+        "GeminiExplainer",
+        FailingGeminiExplainer
+    )
+
+        result = pipeline.run_pipeline(
+        "data/leases/sample_lease.pdf",
+        str(
+            tmp_path / "gemini_failure_test.json"
+        )
+    )
+
+        assert result["compliance"]
+
+        for compliance_result in result["compliance"]:
+            assert (
+            compliance_result["ai_explanation"]
+            == "AI explanation unavailable: "
+            "Gemini unavailable for test"
+        )

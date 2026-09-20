@@ -10,6 +10,8 @@ from src.relationship_detector import detect_relationships
 from src.standard_mapper import map_clauses_to_standards
 from src.compliance_checker import check_compliance
 
+from src.gemini_explainer import GeminiExplainer
+
 from src.structured_json import (
     create_structured_json,
     save_structured_json
@@ -152,6 +154,73 @@ def run_pipeline(
         clauses,
         standards
     )
+
+        # Generate AI explanations for compliance results
+
+    print(
+        "\n       Generating Gemini explanations..."
+    )
+
+    try:
+        gemini_explainer = GeminiExplainer()
+        gemini_init_error = None
+
+    except Exception as exc:
+        gemini_explainer = None
+        gemini_init_error = str(exc)
+
+    for compliance_result in compliance_results:
+
+        if gemini_explainer is None:
+            compliance_result["ai_explanation"] = (
+                "AI explanation unavailable: "
+                f"{gemini_init_error}"
+            )
+            continue
+
+        clause_id = compliance_result.get(
+            "clause_id"
+        )
+
+        clause = next(
+            (
+                item
+                for item in clauses
+                if item.get("clause_id") == clause_id
+            ),
+            None
+        )
+
+        if clause is None:
+            compliance_result["ai_explanation"] = (
+                "AI explanation unavailable because "
+                "the related clause could not be found."
+            )
+            continue
+
+        standard_key = compliance_result.get(
+            "standard_key"
+        )
+
+        standard = standards.get(
+            standard_key,
+            {}
+        )
+
+        try:
+            compliance_result["ai_explanation"] = (
+                gemini_explainer.explain_compliance(
+                    clause,
+                    compliance_result,
+                    standard
+                )
+            )
+
+        except Exception as exc:
+            compliance_result["ai_explanation"] = (
+                "AI explanation unavailable: "
+                f"{str(exc)}"
+            )
 
     print(
         f"       Standards loaded: "

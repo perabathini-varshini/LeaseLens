@@ -204,9 +204,11 @@ function displayAnalysisResults(data) {
         }
     `;
 
-    message.parentNode.insertBefore(
-        resultsContainer,
-        message.nextSibling
+    const features = document.querySelector(".features");
+
+    features.insertAdjacentElement(
+        "afterend",
+        resultsContainer
     );
 }
 
@@ -243,6 +245,14 @@ function createComplianceCard(item) {
                 ${escapeHtml(
                     item.reason ||
                     "No explanation provided."
+                )}
+            </p>
+
+            <p>
+                <strong>AI Explanation:</strong>
+                ${escapeHtml(
+                    item.ai_explanation ||
+                    "AI explanation unavailable."
                 )}
             </p>
         </div>
