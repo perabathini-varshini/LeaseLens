@@ -1,0 +1,118 @@
+﻿diff --git a/src/rag_service.py b/src/rag_service.py
+index fcca954..8934c89 100644
+--- a/src/rag_service.py
++++ b/src/rag_service.py
+@@ -1,5 +1,6 @@
+-
++import math
+ import re
++from unittest import result
+ 
+ from src.gemini_client import GeminiClient
+ from src.retrieval_service import RetrievalService
+@@ -50,24 +51,41 @@ class RAGService:
+     def answer(
+         self,
+         query: str,
+-        top_k: int = 5
++        top_k: int = 5,
++        min_similarity: float = -1.0
+     ) -> dict:
+ 
+-        if not query or not query.strip():
++        if not isinstance(query, str) or not query.strip():
++            raise ValueError(
++                "Question must be a non-empty string."
++            )
++
++        if (
++            not isinstance(top_k, int)
++            or isinstance(top_k, bool)
++            or top_k <= 0
++        ):
+             raise ValueError(
+-                "Question cannot be empty."
++                "top_k must be a positive integer."
+             )
+ 
+-        if top_k <= 0:
++        if (
++            not isinstance(min_similarity, (int, float))
++            or isinstance(min_similarity, bool)
++            or not math.isfinite(min_similarity)
++            or not -1.0 <= min_similarity <= 1.0
++        ):
+             raise ValueError(
+-                "top_k must be greater than zero."
++                "min_similarity must be a finite number "
++                "between -1.0 and 1.0."
+             )
+ 
+         try:
+             retrieved_results = (
+                 self.retrieval_service.search(
+                     query,
+-                    top_k=top_k
++                    top_k=top_k,
++                    min_similarity=min_similarity
+                 )
+             )
+         except Exception as exc:
+@@ -75,6 +93,11 @@ class RAGService:
+                 f"RAG retrieval failed: {exc}"
+             ) from exc
+ 
++        if not isinstance(retrieved_results, list):
++            raise RuntimeError(
++                "RAG retrieval returned an invalid response."
++            )
++
+         if not retrieved_results:
+             return {
+                 "answer": (
+@@ -88,18 +111,26 @@ class RAGService:
+         sources = []
+ 
+         for result in retrieved_results:
+-            chunk = result.get("chunk", {})
++            if not isinstance(result, dict):
++                continue
++
++            chunk = result.get("chunk")
++
++            if not isinstance(chunk, dict):
++                continue
+ 
+             chunk_id = chunk.get("chunk_id")
+ 
+-            if not chunk_id:
++            if not isinstance(chunk_id, str) or not chunk_id.strip():
+                 continue
+ 
+-            chunk_text = chunk.get("text", "").strip()
++            chunk_text = chunk.get("text")
+ 
+-            if not chunk_text:
++            if not isinstance(chunk_text, str) or not chunk_text.strip():
+                 continue
+ 
++            chunk_text = chunk_text.strip()
++
+             context_parts.append(
+                 f"[{chunk_id}] "
+                 f"Section: "
+@@ -112,12 +143,8 @@ class RAGService:
+             sources.append({
+                 "chunk_id": chunk_id,
+                 "clause_id": chunk.get("clause_id"),
+-                "section_title": chunk.get(
+-                    "section_title"
+-                ),
+-                "clause_type": chunk.get(
+-                    "clause_type"
+-                ),
++                "section_title": chunk.get("section_title"),
++                "clause_type": chunk.get("clause_type"),
+                 "text": chunk_text,
+                 "score": result.get("score")
+             })

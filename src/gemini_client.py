@@ -32,9 +32,12 @@ class GeminiClient:
                 contents=prompt
             )
 
-            if not response.text:
+            if (
+                not isinstance(response.text, str)
+                or not response.text.strip()
+            ):
                 raise RuntimeError(
-                    "Gemini returned an empty response."
+                    "Gemini returned an invalid or empty response."
                 )
 
             return response.text.strip()

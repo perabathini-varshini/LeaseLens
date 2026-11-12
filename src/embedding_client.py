@@ -1,3 +1,6 @@
+
+import math
+
 from google import genai
 
 
@@ -13,9 +16,12 @@ class GeminiEmbeddingClient:
         self.client = gemini_client.client
 
     def embed(self, text: str) -> list[float]:
-        if not text or not text.strip():
+        if (
+            not isinstance(text, str)
+            or not text.strip()
+        ):
             raise ValueError(
-                "Embedding text cannot be empty."
+                "Embedding text must be a non-empty string."
             )
 
         try:
@@ -36,9 +42,30 @@ class GeminiEmbeddingClient:
                     "Gemini returned an empty embedding."
                 )
 
-            return list(values)
+            try:
+                valid_values = all(
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+                for value in values
+            )
+            except OverflowError:
+                valid_values = False
+
+            if not valid_values:
+                raise RuntimeError(
+                    "Gemini returned invalid embedding values."
+        )
+
+            return [float(value) for value in values]
 
         except Exception as exc:
+            if (
+                isinstance(exc, RuntimeError)
+                and str(exc).startswith("Gemini returned")
+            ):
+                raise
+
             raise RuntimeError(
                 f"Gemini embedding request failed: {exc}"
             ) from exc

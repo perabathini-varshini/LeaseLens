@@ -1,0 +1,79 @@
+﻿diff --git a/tests/test_retriever.py b/tests/test_retriever.py
+index edc4417..78a8fb4 100644
+--- a/tests/test_retriever.py
++++ b/tests/test_retriever.py
+@@ -1,3 +1,4 @@
++import math
+ import pytest
+ 
+ from src.retriever import VectorRetriever
+@@ -195,4 +196,67 @@ def test_empty_store_returns_empty_results():
+         top_k=5
+     )
+ 
+-    assert results == []
+\ No newline at end of file
++    assert results == []
++
++def test_search_returns_empty_when_no_results_meet_threshold():
++    class FakeVectorStore:
++        records = [
++            {
++                "chunk": {
++                    "chunk_id": "CHUNK-001",
++                    "text": "Monthly rent is 25000."
++                },
++                "embedding": [1.0, 0.0, 0.0]
++            }
++        ]
++
++    retriever = VectorRetriever(FakeVectorStore())
++
++    results = retriever.search(
++        [0.0, 1.0, 0.0],
++        min_similarity=0.5
++    )
++
++    assert results == []
++
++def test_search_keeps_results_above_threshold():
++    class FakeVectorStore:
++        records = [
++            {
++                "chunk": {
++                    "chunk_id": "CHUNK-001",
++                    "text": "Monthly rent is 25000."
++                },
++                "embedding": [1.0, 0.0, 0.0]
++            }
++        ]
++
++    retriever = VectorRetriever(FakeVectorStore())
++
++    results = retriever.search(
++        [1.0, 0.0, 0.0],
++        min_similarity=0.5
++    )
++
++    assert len(results) == 1
++    assert results[0]["score"] >= 0.5
++
++
++def test_invalid_similarity_threshold_is_rejected():
++    class FakeVectorStore:
++        records = []
++
++    retriever = VectorRetriever(FakeVectorStore())
++
++    for threshold in (
++        -1.1,
++        1.1,
++        math.nan,
++        math.inf,
++        -math.inf,
++    ):
++        with pytest.raises(ValueError):
++            retriever.search(
++                [1.0, 0.0, 0.0],
++                min_similarity=threshold,
++            )

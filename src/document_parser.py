@@ -1,30 +1,33 @@
 import fitz
-
+class DocumentParsingError(ValueError):
+    """Raised when an uploaded document cannot be parsed."""
 
 def extract_pdf_text(file_path: str) -> list[dict]:
     """
     Extract text from a PDF page by page.
-
-    Returns:
-        A list of dictionaries containing:
-        - page number
-        - extracted text
     """
 
     pages = []
 
-    document = fitz.open(file_path)
+    try:
+        with fitz.open(file_path) as document:
+            for page_number, page in enumerate(document, start=1):
+                text = page.get_text("text")
 
-    for page_number, page in enumerate(document, start=1):
+                pages.append({
+                    "page": page_number,
+                    "text": text
+                })
 
-        text = page.get_text("text")
+    except Exception as error:
+        raise DocumentParsingError(
+            f"Could not open PDF: {error}"
+        ) from error
 
-        pages.append({
-            "page": page_number,
-            "text": text
-        })
-
-    document.close()
+    if not any(page["text"].strip() for page in pages):
+        raise DocumentParsingError(
+            "PDF contains no extractable text."
+        )
 
     return pages
 
@@ -48,7 +51,7 @@ def extract_docx_text(file_path: str) -> list[dict]:
 
     except Exception as error:
 
-        raise ValueError(
+        raise DocumentParsingError(
             f"Could not open DOCX: {error}"
         )
 
@@ -65,6 +68,11 @@ def extract_docx_text(file_path: str) -> list[dict]:
                 "paragraph": paragraph_number,
                 "text": text
             })
+
+    if not paragraphs:
+        raise DocumentParsingError(
+            "DOCX contains no extractable text."
+        )
 
     return paragraphs
 
@@ -129,7 +137,7 @@ def extract_document(file_path: str) -> list[dict]:
     path = Path(file_path).resolve()
 
     if not path.exists():
-        raise ValueError(
+        raise DocumentParsingError(
             f"Document not found: {path}"
         )
 
@@ -155,6 +163,6 @@ def extract_document(file_path: str) -> list[dict]:
 
     else:
 
-        raise ValueError(
+        raise DocumentParsingError(
             f"Unsupported document type: {extension}"
         )

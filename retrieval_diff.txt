@@ -1,0 +1,60 @@
+﻿diff --git a/src/retrieval_service.py b/src/retrieval_service.py
+index 79b080a..7a81a48 100644
+--- a/src/retrieval_service.py
++++ b/src/retrieval_service.py
+@@ -1,3 +1,5 @@
++import math
++
+ from src.embedding_client import GeminiEmbeddingClient
+ from src.retriever import VectorRetriever
+ 
+@@ -20,12 +22,36 @@ class RetrievalService:
+     def search(
+         self,
+         query: str,
+-        top_k: int = 5
++        top_k: int = 5,
++        min_similarity: float = -1.0
+     ) -> list[dict]:
+ 
+-        if not query or not query.strip():
++        if (
++            not isinstance(query, str)
++            or not query.strip()
++        ):
++            raise ValueError(
++                "Search query must be a non-empty string."
++            )
++
++        if (
++            not isinstance(top_k, int)
++            or isinstance(top_k, bool)
++            or top_k <= 0
++        ):
+             raise ValueError(
+-                "Search query cannot be empty."
++                "top_k must be a positive integer."
++            )
++
++        if (
++            not isinstance(min_similarity, (int, float))
++            or isinstance(min_similarity, bool)
++            or not math.isfinite(min_similarity)
++            or not -1.0 <= min_similarity <= 1.0
++        ):
++            raise ValueError(
++                "min_similarity must be a finite number "
++                "between -1.0 and 1.0."
+             )
+ 
+         query_embedding = (
+@@ -36,5 +62,6 @@ class RetrievalService:
+ 
+         return self.retriever.search(
+             query_embedding,
+-            top_k=top_k
+-        )
+\ No newline at end of file
++            top_k=top_k,
++            min_similarity=min_similarity
++        )

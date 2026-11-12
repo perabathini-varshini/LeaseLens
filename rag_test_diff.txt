@@ -1,0 +1,247 @@
+﻿diff --git a/tests/test_rag_service.py b/tests/test_rag_service.py
+index 6fd46d5..1ebe061 100644
+--- a/tests/test_rag_service.py
++++ b/tests/test_rag_service.py
+@@ -147,7 +147,7 @@ def test_empty_question_is_rejected():
+     except ValueError as exc:
+         assert (
+             str(exc)
+-            == "Question cannot be empty."
++            == "Question must be a non-empty string."        
+         )
+ 
+ 
+@@ -155,48 +155,24 @@ def test_whitespace_question_is_rejected():
+ 
+     service = create_service()
+ 
+-    try:
++    with pytest.raises(
++        ValueError,
++        match="Question must be a non-empty string."
++    ):
+         service.answer("   ")
+-        assert False
+-    except ValueError as exc:
+-        assert (
+-            str(exc)
+-            == "Question cannot be empty."
+-        )
+-
+-    def test_invalid_top_k_is_rejected():
+-
+-        service = create_service()
+-
+-    try:
+-        service.answer(
+-            "What is the rent?",
+-            top_k=0
+-        )
+-        assert False
+-    except ValueError as exc:
+-        assert (
+-            str(exc)
+-            == "top_k must be greater than zero."
+-        )
+-
+-
+-def test_negative_top_k_is_rejected():
+ 
++@pytest.mark.parametrize("top_k", [0, -1])
++def test_invalid_top_k_is_rejected(top_k):
+     service = create_service()
+ 
+-    try:
++    with pytest.raises(
++        ValueError,
++        match="top_k must be a positive integer."
++    ):
+         service.answer(
+             "What is the rent?",
+-            top_k=-1
+-        )
+-        assert False
+-    except ValueError as exc:
+-        assert (
+-            str(exc)
+-            == "top_k must be greater than zero."
+-        )
+-
++            top_k=top_k,
++        ) 
+ 
+ class EmptyVectorStore:
+ 
+@@ -253,12 +229,16 @@ def test_gemini_failure_is_reported():
+ 
+ 
+ class FailingRetrievalService:
+-
+-    def search(self, query, top_k=5):
++    def search(
++        self,
++        query,
++        top_k=5,
++        min_similarity=-1.0
++    ):
+         raise RuntimeError(
+             "Vector retrieval unavailable"
+         )
+-
++    
+ 
+ def test_retrieval_failure_is_reported():
+ 
+@@ -323,7 +303,8 @@ def test_malformed_chunks_are_not_used_as_sources():
+ def test_ambiguous_evidence_is_flagged_in_prompt():
+     service = create_service()
+ 
+-    service.retrieval_service.search = lambda query, top_k=5: [
++    service.retrieval_service.search = (
++        lambda query, top_k=5, min_similarity=-1.0: [
+         {
+             "chunk": {
+                 "chunk_id": "CHUNK-010",
+@@ -335,8 +316,8 @@ def test_ambiguous_evidence_is_flagged_in_prompt():
+                 ),
+             },
+             "score": 0.9,
+-        }
+-    ]
++        }                                           ]
++    )
+ 
+     service.answer("Who is responsible for maintenance?")
+ 
+@@ -349,8 +330,8 @@ def test_ambiguous_evidence_is_flagged_in_prompt():
+ def test_conflicting_evidence_is_flagged_in_prompt():
+     service = create_service()
+ 
+-    service.retrieval_service.search = lambda query, top_k=5: [
+-        {
++    service.retrieval_service.search = (
++    lambda query, top_k=5, min_similarity=-1.0: [        {
+             "chunk": {
+                 "chunk_id": "CHUNK-011",
+                 "section_title": "TERMINATION",
+@@ -367,8 +348,8 @@ def test_conflicting_evidence_is_flagged_in_prompt():
+                 "text": "The notice period is 60 days.",
+             },
+             "score": 0.85,
+-        },
+-    ]
++        },                                      ]
++    )
+ 
+     service.answer("What is the termination notice period?")
+ 
+@@ -466,3 +447,108 @@ def test_none_gemini_response_is_rejected():
+ 
+     with pytest.raises(RuntimeError, match="empty response"):
+         service.answer("What is the security deposit?")
++
++
++def test_answer_passes_similarity_threshold_to_retrieval():
++    service = create_service()
++    captured = {}
++
++    def fake_search(
++        query,
++        top_k=5,
++        min_similarity=-1.0
++    ):
++        captured["query"] = query
++        captured["top_k"] = top_k
++        captured["min_similarity"] = min_similarity
++        return []
++
++    service.retrieval_service.search = fake_search
++
++    result = service.answer(
++        "What is the rent?",
++        top_k=3,
++        min_similarity=0.65
++    )
++
++    assert captured["query"] == "What is the rent?"
++    assert captured["top_k"] == 3
++    assert captured["min_similarity"] == 0.65
++    assert result["sources"] == []
++    assert "could not find relevant information" in (
++        result["answer"].lower()
++    )
++
++def test_high_similarity_threshold_returns_no_results():
++    service = create_service()
++
++    service.retrieval_service.search = (
++        lambda query, top_k=5, min_similarity=-1.0: []
++    )
++
++    result = service.answer(
++        "What is the security deposit?",
++        min_similarity=1.0
++    )
++
++    assert result["sources"] == []
++    assert result["answer"] == (
++        "I could not find relevant information in the lease."
++    )
++
++
++@pytest.mark.parametrize(
++    "top_k",
++    [1.5, "5", None, True],
++)
++def test_invalid_top_k_type_is_rejected(top_k):
++    service = create_service()
++
++    with pytest.raises(
++        ValueError,
++        match="top_k must be a positive integer."
++    ):
++        service.answer(
++            "What is the rent?",
++            top_k=top_k,
++        )
++
++
++@pytest.mark.parametrize(
++    "min_similarity",
++    [
++        -1.1,
++        1.1,
++        float("nan"),
++        float("inf"),
++        "0.5",
++        None,
++        True,
++    ],
++)
++def test_invalid_similarity_threshold_is_rejected(
++    min_similarity,
++):
++    service = create_service()
++
++    with pytest.raises(
++        ValueError,
++        match="min_similarity must be a finite number",
++    ):
++        service.answer(
++            "What is the rent?",
++            min_similarity=min_similarity,
++        )
++
++@pytest.mark.parametrize(
++    "query",
++    [None, 123, []]
++)
++def test_invalid_question_types_are_rejected(query):
++    service = create_service()
++
++    with pytest.raises(
++        ValueError,
++        match="Question must be a non-empty string."
++    ):
++        service.answer(query)
+\ No newline at end of file

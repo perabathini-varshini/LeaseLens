@@ -55,3 +55,50 @@ def test_whitespace_prompt():
         match="Gemini prompt cannot be empty"
     ):
         client.generate("   ")
+
+def test_gemini_empty_response():
+    client = GeminiClient()
+
+    mock_response = MagicMock()
+    mock_response.text = None
+
+    client.client.models.generate_content = MagicMock(
+        return_value=mock_response
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Gemini API request failed"
+    ):
+        client.generate("Test prompt")
+
+
+def test_gemini_non_string_response():
+    client = GeminiClient()
+
+    mock_response = MagicMock()
+    mock_response.text = 12345
+
+    client.client.models.generate_content = MagicMock(
+        return_value=mock_response
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Gemini API request failed"
+    ):
+        client.generate("Test prompt")
+
+
+def test_gemini_api_failure():
+    client = GeminiClient()
+
+    client.client.models.generate_content = MagicMock(
+        side_effect=Exception("API unavailable")
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Gemini API request failed"
+    ):
+        client.generate("Test prompt")

@@ -12,12 +12,14 @@ from pydantic import BaseModel
 from src.indexing_service import IndexingService
 from src.vector_store import LocalVectorStore
 from src.rag_service import RAGService
+from src.document_parser import DocumentParsingError
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 LEASES_DIR = BASE_DIR / "data" / "leases"
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
 VECTOR_DIR = PROCESSED_DIR / "vectors"
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024
 
 LEASES_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
@@ -114,25 +116,51 @@ def analyze_lease(file: UploadFile = File(...)):
     # -----------------------------------------
     # 5. Save uploaded file
     # -----------------------------------------
+    upload_too_large = False
+
     try:
         with input_path.open("wb") as buffer:
-            shutil.copyfileobj(
-                file.file,
-                buffer
-            )
+            total_size = 0
 
-        # -----------------------------------------
-        # 6. Reject empty files
-        # -----------------------------------------
-        if input_path.stat().st_size == 0:
-            raise HTTPException(
-                status_code=400,
-                detail="The uploaded file is empty."
-            )
+            while True:
+                chunk = file.file.read(1024 * 1024)
 
-        # -----------------------------------------
-        # 7. Run document processing pipeline
-        # -----------------------------------------
+                if not chunk:
+                    break
+
+                total_size += len(chunk)
+
+                if total_size > MAX_UPLOAD_SIZE:
+                    upload_too_large = True
+                    break
+
+                buffer.write(chunk)
+
+    except Exception:
+        input_path.unlink(missing_ok=True)
+        raise
+
+    if upload_too_large:
+        input_path.unlink(missing_ok=True)
+
+        raise HTTPException(
+            status_code=413,
+            detail="File exceeds the maximum upload size of 10 MB."
+        )
+
+    # -----------------------------------------
+    # 6. Reject empty files
+    # -----------------------------------------
+    if input_path.stat().st_size == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is empty."
+        )
+
+    # -----------------------------------------
+    # 7. Run document processing pipeline
+    # -----------------------------------------
+    try:
         result = run_pipeline(
             str(input_path),
             str(output_path)
@@ -172,6 +200,12 @@ def analyze_lease(file: UploadFile = File(...)):
 
     except HTTPException:
         raise
+
+    except DocumentParsingError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid or unreadable document: {str(exc)}"
+        )
 
     except Exception as exc:
         raise HTTPException(

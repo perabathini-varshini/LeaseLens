@@ -144,3 +144,166 @@ def test_invalid_store_format(tmp_path):
         match="Vector store must contain a list"
     ):
         store.load()
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        None,
+        "invalid",
+        {},
+        {"chunk": None, "embedding": [0.1, 0.2]},
+        {"chunk": {}, "embedding": []},
+        {"chunk": {}, "embedding": [True, 0.2]},
+        {"chunk": {}, "embedding": ["invalid", 0.2]},
+        {"chunk": {}, "embedding": [float("nan"), 0.2]},
+        {"chunk": {}, "embedding": [float("inf"), 0.2]},
+    ],
+)
+def test_load_rejects_malformed_records(tmp_path, record):
+    storage_path = tmp_path / "vectors.json"
+    storage_path.write_text(
+        json.dumps([record]),
+        encoding="utf-8"
+    )
+
+    store = LocalVectorStore(str(storage_path))
+
+    with pytest.raises(ValueError):
+        store.load()
+
+
+def test_load_preserves_existing_records_on_validation_failure(
+    tmp_path,
+):
+    storage_path = tmp_path / "vectors.json"
+    storage_path.write_text(
+        json.dumps([{"chunk": {}, "embedding": []}]),
+        encoding="utf-8"
+    )
+
+    store = LocalVectorStore(str(storage_path))
+    existing_record = {
+        "chunk": create_chunk(),
+        "embedding": [0.1, 0.2, 0.3],
+    }
+    store.records = [existing_record]
+
+    with pytest.raises(ValueError):
+        store.load()
+
+    assert store.records == [existing_record]
+
+
+@pytest.mark.parametrize(
+    "embedding",
+    [
+        [],
+        [True, 0.2],
+        ["invalid", 0.2],
+        [float("nan"), 0.2],
+        [float("inf"), 0.2],
+    ],
+)
+def test_add_rejects_invalid_embeddings(tmp_path, embedding):
+    store = LocalVectorStore(
+        str(tmp_path / "vectors.json")
+    )
+
+    with pytest.raises(ValueError):
+        store.add(create_chunk(), embedding)
+
+
+def test_add_rejects_invalid_chunk(tmp_path):
+    store = LocalVectorStore(
+        str(tmp_path / "vectors.json")
+    )
+
+    with pytest.raises(ValueError):
+        store.add(None, [0.1, 0.2])
+
+
+def test_save_rejects_malformed_records(tmp_path):
+    store = LocalVectorStore(
+        str(tmp_path / "vectors.json")
+    )
+    store.records = [
+        {"chunk": {}, "embedding": []}
+    ]
+
+    with pytest.raises(ValueError):
+        store.save()
+
+
+def test_add_rejects_inconsistent_embedding_dimensions(tmp_path):
+    store = LocalVectorStore(
+        str(tmp_path / "vectors.json")
+    )
+
+    store.add(create_chunk(), [0.1, 0.2, 0.3])
+
+    second_chunk = create_chunk()
+    second_chunk["chunk_id"] = "CHUNK-002"
+
+    with pytest.raises(
+        ValueError,
+        match="Embedding dimensions must be consistent"
+    ):
+        store.add(second_chunk, [0.1, 0.2])
+
+    assert store.count() == 1
+
+
+def test_load_rejects_inconsistent_embedding_dimensions(tmp_path):
+    storage_path = tmp_path / "vectors.json"
+
+    records = [
+        {
+            "chunk": create_chunk(),
+            "embedding": [0.1, 0.2, 0.3],
+        },
+        {
+            "chunk": create_chunk(),
+            "embedding": [0.4, 0.5],
+        },
+    ]
+
+    storage_path.write_text(
+        json.dumps(records),
+        encoding="utf-8"
+    )
+
+    store = LocalVectorStore(str(storage_path))
+
+    with pytest.raises(
+        ValueError,
+        match="Embedding dimensions must be consistent"
+    ):
+        store.load()
+
+    assert store.records == []
+
+
+def test_save_rejects_inconsistent_embedding_dimensions(tmp_path):
+    store = LocalVectorStore(
+        str(tmp_path / "vectors.json")
+    )
+
+    store.records = [
+        {
+            "chunk": create_chunk(),
+            "embedding": [0.1, 0.2, 0.3],
+        },
+        {
+            "chunk": create_chunk(),
+            "embedding": [0.4, 0.5],
+        },
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="Embedding dimensions must be consistent"
+    ):
+        store.save()
+
+    assert not store.storage_path.exists()

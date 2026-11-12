@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+import pytest
 
 from app import app
 from src import pipeline
@@ -104,6 +105,57 @@ def test_empty_file():
     assert response.status_code == 400
     assert "empty" in response.json()["detail"].lower()
 
+def test_upload_file_too_large(monkeypatch):
+    monkeypatch.setattr(
+        api_routes,
+        "MAX_UPLOAD_SIZE",
+        32
+    )
+
+    response = client.post(
+        "/api/analyze",
+        files={
+            "file": (
+                "large.pdf",
+                b"A" * 33,
+                "application/pdf"
+            )
+        }
+    )
+
+    assert response.status_code == 413
+    assert "maximum upload size" in response.json()["detail"].lower()
+
+def test_corrupted_pdf_returns_422():
+    response = client.post(
+        "/api/analyze",
+        files={
+            "file": (
+                "corrupted.pdf",
+                b"This is not a valid PDF document.",
+                "application/pdf"
+            )
+        }
+    )
+
+    assert response.status_code == 422
+    assert "Invalid or unreadable document" in response.json()["detail"]
+
+
+def test_corrupted_docx_returns_422():
+    response = client.post(
+        "/api/analyze",
+        files={
+            "file": (
+                "corrupted.docx",
+                b"This is not a valid DOCX document.",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        }
+    )
+
+    assert response.status_code == 422
+    assert "Invalid or unreadable document" in response.json()["detail"]
 
 def test_valid_pdf_analysis(monkeypatch):
     monkeypatch.setattr(
@@ -286,3 +338,32 @@ def test_ask_returns_answer_and_sources(monkeypatch, tmp_path):
     assert len(data["sources"]) == 1
     assert data["sources"][0]["chunk_id"] == "CHUNK-001"
     assert data["sources"][0]["text"] == "The monthly rent is Rs. 25,000."
+
+def test_upload_write_failure_removes_partial_file(monkeypatch):
+    original_open = Path.open
+    created_paths = []
+
+    def failing_open(path, *args, **kwargs):
+        if path.parent == LEASES_DIR and path.suffix == ".pdf":
+            created_paths.append(path)
+            original_open(path, *args, **kwargs)
+            raise OSError("Simulated disk write failure")
+
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", failing_open)
+
+    with pytest.raises(OSError, match="Simulated disk write failure"):
+        client.post(
+            "/api/analyze",
+            files={
+                "file": (
+                    "sample.pdf",
+                    b"Some PDF content",
+                    "application/pdf"
+                )
+            }
+        )
+
+    assert len(created_paths) == 1
+    assert not created_paths[0].exists()

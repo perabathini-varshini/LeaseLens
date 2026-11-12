@@ -1,3 +1,6 @@
+
+import math
+
 from src.chunker import create_chunks
 from src.embedding_client import GeminiEmbeddingClient
 
@@ -32,26 +35,57 @@ class IndexingService:
 
         new_records = []
 
-        # Generate embeddings before replacing the
-        # existing index. This preserves the old index
-        # if an embedding request fails.
+        # Generate and validate embeddings before replacing
+        # the existing index.
+
+        expected_dimension = None
+
         for chunk in chunks:
             embedding = self.embedding_client.embed(
                 chunk["text"]
             )
 
-            if not embedding:
+            if (
+                not isinstance(embedding, (list, tuple))
+                or not embedding
+            ):
                 raise ValueError(
-                    f"Empty embedding for {chunk['chunk_id']}."
+                    f"Invalid embedding for {chunk['chunk_id']}."
+                )
+
+            try:
+                valid_embedding = all(
+                    isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and math.isfinite(value)
+                    for value in embedding
+                )
+            except OverflowError:
+                valid_embedding = False
+
+            if not valid_embedding:
+                raise ValueError(
+                    f"Invalid embedding values for "
+                    f"{chunk['chunk_id']}."
+                )
+
+            if expected_dimension is None:
+                expected_dimension = len(embedding)
+            elif len(embedding) != expected_dimension:
+                raise ValueError(
+                    "Embedding dimensions must be consistent "
+                    "across all chunks."
                 )
 
             new_records.append({
                 "chunk": chunk,
-                "embedding": embedding
+                "embedding": [
+                    float(value) for value in embedding
+                ]
             })
 
         # Replace the previous index only after all
-        # embeddings have been generated successfully.
+        # embeddings have been generated and validated.
         previous_records = self.vector_store.records
 
         try:

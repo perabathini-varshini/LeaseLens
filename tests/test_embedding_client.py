@@ -60,7 +60,7 @@ def test_empty_text():
 
     with pytest.raises(
         ValueError,
-        match="Embedding text cannot be empty"
+        match="Embedding text must be a non-empty string"
     ):
         client.embed("")
 
@@ -70,7 +70,7 @@ def test_whitespace_text():
 
     with pytest.raises(
         ValueError,
-        match="Embedding text cannot be empty"
+        match="Embedding text must be a non-empty string"
     ):
         client.embed("   ")
 
@@ -117,3 +117,52 @@ def test_empty_embedding():
         client.embed(
             "The tenant shall pay rent."
         )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        None,
+        123,
+        [],
+    ],
+)
+def test_invalid_text_type(text):
+    client, mock_client = create_client()
+
+    with pytest.raises(
+        ValueError,
+        match="Embedding text must be a non-empty string",
+    ):
+        client.embed(text)
+
+    mock_client.models.embed_content.assert_not_called()
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [0.1, float("nan"), 0.3],
+        [0.1, float("inf"), 0.3],
+        [0.1, float("-inf"), 0.3],
+        [0.1, "invalid", 0.3],
+        [0.1, 10**1000, 0.3],
+
+    ],
+)
+def test_invalid_embedding_values(values):
+    client, mock_client = create_client()
+
+    mock_response = MagicMock()
+    mock_embedding = MagicMock()
+    mock_embedding.values = values
+    mock_response.embeddings = [mock_embedding]
+
+    mock_client.models.embed_content.return_value = (
+        mock_response
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Gemini returned invalid embedding values",
+    ):
+        client.embed("The monthly rent is INR 50000.")
